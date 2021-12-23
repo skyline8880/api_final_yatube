@@ -1,9 +1,9 @@
 from django.shortcuts import get_object_or_404
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, permissions, viewsets
-from rest_framework.exceptions import PermissionDenied
+from rest_framework import filters, mixins, viewsets
 from rest_framework.pagination import LimitOffsetPagination
 
+from .permissions import (AuthOnly, AuthOrReadOnly, DisableChangeAlienContent,
+                          DisableDeleteAlienContent)
 from posts.models import Follow, Group, Post
 from .serializers import (CommentSerializer, FollowSerializer, GroupSerializer,
                           PostSerializer)
@@ -13,25 +13,29 @@ class PostViewSet(viewsets.ModelViewSet):
     serializer_class = PostSerializer
     queryset = Post.objects.all()
     pagination_class = LimitOffsetPagination
-    permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
+    permission_classes = (AuthOrReadOnly,)
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
 
     def perform_update(self, serializer):
         if serializer.instance.author != self.request.user:
-            raise PermissionDenied('Изменение чужого контента запрещено!')
+            raise DisableChangeAlienContent(
+                'Изменение чужого контента запрещено!'
+            )
         super(PostViewSet, self).perform_update(serializer)
 
     def perform_destroy(self, instance):
         if instance.author != self.request.user:
-            raise PermissionDenied('Удаление чужого контента запрещено!')
+            raise DisableDeleteAlienContent(
+                'Удаление чужого контента запрещено!'
+            )
         instance.delete()
 
 
 class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
-    permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
+    permission_classes = (AuthOrReadOnly,)
 
     def get_queryset(self):
         post = get_object_or_404(Post, pk=self.kwargs.get('post_id'))
@@ -44,12 +48,16 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         if serializer.instance.author != self.request.user:
-            raise PermissionDenied('Изменение чужого контента запрещено!')
+            raise DisableChangeAlienContent(
+                'Изменение чужого контента запрещено!'
+            )
         super(CommentViewSet, self).perform_update(serializer)
 
     def perform_destroy(self, instance):
         if instance.author != self.request.user:
-            raise PermissionDenied('Удаление чужого контента запрещено!')
+            raise DisableDeleteAlienContent(
+                'Удаление чужого контента запрещено!'
+            )
         instance.delete()
 
 
@@ -58,15 +66,17 @@ class GroupViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Group.objects.all()
 
 
-class FollowViewSet(viewsets.ModelViewSet):
+class FollowViewSet(mixins.CreateModelMixin,
+                    mixins.ListModelMixin,
+                    viewsets.GenericViewSet):
     serializer_class = FollowSerializer
-    permission_classes = (permissions.IsAuthenticated,)
-    filter_backends = (DjangoFilterBackend, filters.SearchFilter,)
+    permission_classes = (AuthOnly,)
+    filter_backends = (filters.SearchFilter,)
     search_fields = ('=user__username', '=following__username',)
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Follow.objects.filter(user__username=user.username)
+        queryset = user.follower.all()
         return queryset
 
     def perform_create(self, serializer):
