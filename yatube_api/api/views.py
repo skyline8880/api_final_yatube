@@ -1,9 +1,8 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import filters, mixins, viewsets
+from rest_framework import filters, mixins, permissions, viewsets
 from rest_framework.pagination import LimitOffsetPagination
 
-from .permissions import (AuthOnly, AuthOrReadOnly, DisableChangeAlienContent,
-                          DisableDeleteAlienContent)
+from .permissions import AuthOrReadOnly
 from posts.models import Group, Post
 from .serializers import (CommentSerializer, FollowSerializer, GroupSerializer,
                           PostSerializer)
@@ -19,17 +18,9 @@ class PostViewSet(viewsets.ModelViewSet):
         serializer.save(author=self.request.user)
 
     def perform_update(self, serializer):
-        if serializer.instance.author != self.request.user:
-            raise DisableChangeAlienContent(
-                'Изменение чужого контента запрещено!'
-            )
         super(PostViewSet, self).perform_update(serializer)
 
     def perform_destroy(self, instance):
-        if instance.author != self.request.user:
-            raise DisableDeleteAlienContent(
-                'Удаление чужого контента запрещено!'
-            )
         instance.delete()
 
 
@@ -47,17 +38,9 @@ class CommentViewSet(viewsets.ModelViewSet):
         serializer.save(author=self.request.user, post=post)
 
     def perform_update(self, serializer):
-        if serializer.instance.author != self.request.user:
-            raise DisableChangeAlienContent(
-                'Изменение чужого контента запрещено!'
-            )
         super(CommentViewSet, self).perform_update(serializer)
 
     def perform_destroy(self, instance):
-        if instance.author != self.request.user:
-            raise DisableDeleteAlienContent(
-                'Удаление чужого контента запрещено!'
-            )
         instance.delete()
 
 
@@ -70,7 +53,7 @@ class FollowViewSet(mixins.CreateModelMixin,
                     mixins.ListModelMixin,
                     viewsets.GenericViewSet):
     serializer_class = FollowSerializer
-    permission_classes = (AuthOnly,)
+    permission_classes = (permissions.IsAuthenticated,)
     filter_backends = (filters.SearchFilter,)
     search_fields = ('=user__username', '=following__username',)
 
